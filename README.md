@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -96,6 +97,16 @@
     .btn-gradient:hover {
       background: linear-gradient(90deg, #3b82f6, #6ee7b7, #f5c16c);
     }
+    /* Payment section style */
+    .payment-section {
+      background: rgba(255,255,255,0.94);
+      border-radius: 1.3rem;
+      margin-top: 2.2rem;
+      padding: 1.2rem 1.2rem 0.7rem 1.2rem;
+      box-shadow: 0 8px 32px 0 #0001;
+      z-index: 2;
+      position: relative;
+    }
     @media (max-width: 600px) {
       .dashboard-card { padding: 1.2rem 0.4rem 1.2rem 0.4rem; }
       .dashboard-header h1 { font-size: 1.7rem; }
@@ -103,6 +114,7 @@
       .mountain-graphic { height: 55px; bottom:-25px;}
       .coin-icons { margin-top: 1.2rem; font-size: 1.1rem;}
       .card-form { padding: 1.2rem 0.4rem 0.7rem 0.7rem; }
+      .payment-section { padding: 0.7rem 0.4rem 0.5rem 0.7rem; }
     }
   </style>
 </head>
@@ -163,10 +175,22 @@
         <hr>
         <!-- Wallet Connect Buttons -->
         <button type="button" class="btn btn-outline-dark w-100 mb-2">
-          <i class="fab fa-google-wallet me-2"></i>Connect Google Wallet
+          <i class="fas fa-wallet me-2"></i>Connect All Wallets
         </button>
         <button type="button" class="btn btn-outline-primary w-100">
           <i class="fab fa-ethereum me-2"></i>Connect MetaMask
+        </button>
+      </form>
+    </div>
+    <div class="payment-section mt-4">
+      <h5 class="text-center text-dark mb-3"><i class="fas fa-credit-card"></i> Simple Payment</h5>
+      <form>
+        <div class="mb-3">
+          <label class="form-label text-dark"><i class="fas fa-dollar-sign"></i> Amount</label>
+          <input type="number" class="form-control" placeholder="Enter amount (ETH, BTC, etc.)" min="0.0001" step="any" required>
+        </div>
+        <button type="button" class="btn btn-gradient w-100">
+          <i class="fas fa-paper-plane me-2"></i>Send Payment
         </button>
       </form>
     </div>
