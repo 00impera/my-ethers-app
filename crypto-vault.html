@@ -2,36 +2,212 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Crypto Vault</title>
+  <title>Crypto Vault Pro</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers/dist/ethers.min.js"></script>
+  <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; background: #1a1a2e; color: #e5e5e5; }
-    .vault { background: #16213e; padding: 2em; margin: 3em auto; border-radius: 8px; width: 350px; box-shadow: 0 0 10px #0f3460; }
+    .vault { background: #16213e; padding: 2em; margin: 2em auto; border-radius: 8px; width: 410px; box-shadow: 0 0 10px #0f3460; }
     .vault h2 { color: #e94560; }
-    #wallet-address { font-size: 0.9em; margin: 1em 0; word-break: break-all; }
-    button { background: #0f3460; border: none; color: #fff; padding: 0.7em 1.5em; border-radius: 4px; cursor: pointer; }
+    #wallet-address { font-size: 0.92em; margin-bottom: 0.7em; word-break: break-all; }
+    button, select { background: #0f3460; border: none; color: #fff; padding: 0.7em 1.5em; border-radius: 4px; cursor: pointer; font-size: 1em;}
     button:hover { background: #e94560; }
+    .balance, .transactions, .vault-actions { margin: 1em 0; }
+    .balance span { display: block; margin: 0.5em 0;}
+    .transactions ul { list-style: none; padding-left: 0;}
+    .transactions li { background: #23234a; margin-bottom: 0.4em; padding: 0.4em; border-radius: 3px; font-size: 0.97em;}
+    .vault-actions input { width: 90px; margin-right: 0.5em; }
+    .wallet-buttons { display: flex; gap: 1em; margin-bottom: 1em;}
+    .error { color: #e94560; margin: 1em 0; }
+    .success { color: #03c988; margin: 1em 0; }
   </style>
 </head>
 <body>
   <div class="vault">
-    <h2>Crypto Vault</h2>
+    <h2>Crypto Vault Pro</h2>
+    <div class="wallet-buttons">
+      <button onclick="connectInjected()">Connect MetaMask</button>
+      <button onclick="connectWalletConnect()">WalletConnect</button>
+    </div>
     <div id="wallet-address">No wallet connected</div>
-    <button onclick="connectWallet()">Connect Wallet</button>
+
+    <div class="balance" id="balance-section" style="display:none;">
+      <b>Balances:</b>
+      <span id="eth-balance">ETH: -</span>
+      <span id="erc20-balance">USDC: -</span>
+    </div>
+
+    <div class="transactions" id="tx-section" style="display:none;">
+      <b>Recent ETH Transactions:</b>
+      <ul id="tx-list"></ul>
+    </div>
+
+    <div class="vault-actions" id="vault-section" style="display:none;">
+      <b>Vault Demo Contract Actions:</b>
+      <div>
+        <input type="number" min="0" step="any" id="deposit-amount" placeholder="Amount (ETH)">
+        <button onclick="depositToVault()">Deposit</button>
+      </div>
+      <div style="margin-top:0.7em;">
+        <input type="number" min="0" step="any" id="withdraw-amount" placeholder="Amount (ETH)">
+        <button onclick="withdrawFromVault()">Withdraw</button>
+      </div>
+      <div id="vault-status"></div>
+    </div>
+    <div id="error-msg" class="error"></div>
   </div>
-  <script>
-    async function connectWallet() {
-      if (window.ethereum) {
-        try {
-          const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
-          document.getElementById('wallet-address').textContent = "Wallet: " + accounts[0];
-        } catch (error) {
-          document.getElementById('wallet-address').textContent = "Connection failed.";
-        }
-      } else {
-        document.getElementById('wallet-address').textContent = "MetaMask not detected.";
-      }
+
+<script>
+const ALCHEMY_MAINNET_URL = "https://eth-mainnet.g.alchemy.com/v2/Uwb7T0DbXMQHjiJBNf9_b005qYjLmJqk";
+let provider, signer, currentAccount, vaultContract;
+
+const ERC20_ABI = [
+  "function balanceOf(address) view returns (uint)",
+  "function decimals() view returns (uint8)"
+];
+const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"; // Mainnet USDC
+
+// Real vault contract ABI & address
+const VAULT_ABI = [{"constant":false,"inputs":[{"internalType":"uint256","name":"_lockTime","type":"uint256"},{"internalType":"address","name":"_realOwner","type":"address"},{"internalType":"address","name":"_uniswapFactory","type":"address"},{"internalType":"address","name":"_uniswapRouter","type":"address"}],"payable":false,"stateMutability":"nonpayable","type":"constructor"},{"constant":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","payable":false,"type":"event"},{"constant":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","payable":false,"type":"event"},{"constant":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","payable":false,"type":"event"},{"constant":false,"inputs":[],"name":"PAIR_ADDRESS","outputs":[{"internalType":"address","name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"addToWhitelist","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"spender","type":"address"}],"name":"allowance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"burn","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"burnFrom","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"subtractedValue","type":"uint256"}],"name":"decreaseAllowance","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"disableReserveMode","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"enableReserveMode","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"addedValue","type":"uint256"}],"name":"increaseAllowance","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"lockTime","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[],"name":"renounceOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"transferFrom","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"whitelist","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"view","type":"function"}];
+const VAULT_ADDRESS = "0x802Ef4Dd42D736eF4EFf0A32A6dCCeaE151B765D";
+
+function setStatus(msg, type = "error") {
+  document.getElementById('error-msg').textContent = "";
+  document.getElementById('vault-status').textContent = "";
+  if (type === "error") document.getElementById('error-msg').textContent = msg;
+  else document.getElementById('vault-status').textContent = msg;
+}
+
+async function connectInjected() {
+  setStatus("");
+  if (window.ethereum) {
+    try {
+      provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+      await provider.send("eth_requestAccounts", []);
+      signer = provider.getSigner();
+      currentAccount = await signer.getAddress();
+      onWalletConnected();
+    } catch (err) {
+      setStatus("Connection failed: " + err.message);
     }
-  </script>
+  } else {
+    setStatus("MetaMask not detected.");
+  }
+}
+
+async function connectWalletConnect() {
+  setStatus("");
+  try {
+    const walletConnectProvider = new window.WalletConnectProvider.default({
+      rpc: { 1: ALCHEMY_MAINNET_URL }
+    });
+    await walletConnectProvider.enable();
+    provider = new ethers.providers.Web3Provider(walletConnectProvider, "any");
+    signer = provider.getSigner();
+    currentAccount = await signer.getAddress();
+    onWalletConnected();
+  } catch (err) {
+    setStatus("WalletConnect failed: " + err.message);
+  }
+}
+
+async function onWalletConnected() {
+  document.getElementById('wallet-address').textContent = "Wallet: " + currentAccount;
+  document.getElementById('balance-section').style.display = "";
+  document.getElementById('tx-section').style.display = "";
+  document.getElementById('vault-section').style.display = "";
+  setStatus("");
+  vaultContract = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, signer);
+  await updateBalances();
+  await fetchTransactions();
+}
+
+// ETH & ERC-20 balance display
+async function updateBalances() {
+  try {
+    // Use Alchemy provider for balance
+    const baseProvider = new ethers.providers.JsonRpcProvider(ALCHEMY_MAINNET_URL);
+    const ethBal = await baseProvider.getBalance(currentAccount);
+    document.getElementById('eth-balance').textContent = "ETH: " + ethers.utils.formatEther(ethBal);
+    const erc20 = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, baseProvider);
+    const usdcBal = await erc20.balanceOf(currentAccount);
+    const decimals = await erc20.decimals();
+    document.getElementById('erc20-balance').textContent = "USDC: " + (usdcBal / (10 ** decimals)).toLocaleString("en-US", {maximumFractionDigits:6});
+  } catch (err) {
+    document.getElementById('eth-balance').textContent = "ETH: -";
+    document.getElementById('erc20-balance').textContent = "USDC: -";
+    setStatus("Could not fetch balances.", "error");
+  }
+}
+
+// Fetch latest 10 transactions using Etherscan API (public, rate-limited)
+async function fetchTransactions() {
+  const txList = document.getElementById('tx-list');
+  txList.innerHTML = '<li>Loading...</li>';
+  try {
+    const url = `https://api.etherscan.io/api?module=account&action=txlist&address=${currentAccount}&startblock=0&endblock=99999999&sort=desc&apikey=YourApiKeyToken`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.status === "1") {
+      const txs = data.result.slice(0,10);
+      txList.innerHTML = "";
+      if (txs.length === 0) txList.innerHTML = "<li>No recent transactions.</li>";
+      for (const tx of txs) {
+        const val = ethers.utils.formatEther(tx.value);
+        const dir = tx.to.toLowerCase() === currentAccount.toLowerCase() ? "IN" : "OUT";
+        txList.innerHTML += `<li>
+          <b>${dir}</b> | ${val} ETH<br>
+          <a href="https://etherscan.io/tx/${tx.hash}" target="_blank" style="color:#03c988;">View</a>
+        </li>`;
+      }
+    } else {
+      txList.innerHTML = "<li>Could not fetch transactions.</li>";
+    }
+  } catch (err) {
+    txList.innerHTML = "<li>Error fetching transactions.</li>";
+  }
+}
+
+// Vault demo: deposit ETH (calls demo contract)
+async function depositToVault() {
+  setStatus("");
+  const amt = document.getElementById('deposit-amount').value;
+  if (!amt || isNaN(amt) || Number(amt) <= 0) {
+    setStatus("Enter valid amount.", "error");
+    return;
+  }
+  try {
+    const tx = await vaultContract.deposit({ value: ethers.utils.parseEther(amt) });
+    setStatus("Deposit pending... TX: " + tx.hash, "success");
+    await tx.wait();
+    setStatus("Deposit confirmed! TX: " + tx.hash, "success");
+    await updateBalances();
+    await fetchTransactions();
+  } catch (err) {
+    setStatus("Deposit failed: " + (err.data && err.data.message ? err.data.message : err.message), "error");
+  }
+}
+
+// Vault demo: withdraw ETH (calls demo contract)
+async function withdrawFromVault() {
+  setStatus("");
+  const amt = document.getElementById('withdraw-amount').value;
+  if (!amt || isNaN(amt) || Number(amt) <= 0) {
+    setStatus("Enter valid amount.", "error");
+    return;
+  }
+  try {
+    // Amount to withdraw must be in wei (uint256)
+    const tx = await vaultContract.withdraw(ethers.utils.parseEther(amt));
+    setStatus("Withdraw pending... TX: " + tx.hash, "success");
+    await tx.wait();
+    setStatus("Withdraw confirmed! TX: " + tx.hash, "success");
+    await updateBalances();
+    await fetchTransactions();
+  } catch (err) {
+    setStatus("Withdraw failed: " + (err.data && err.data.message ? err.data.message : err.message), "error");
+  }
+}
+</script>
 </body>
 </html>
