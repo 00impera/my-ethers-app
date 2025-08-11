@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Crypto Vault</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers/dist/ethers.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #e5e5e5; }
+    .vault { background: #16213e; padding: 2em; margin: 3em auto; border-radius: 8px; width: 350px; box-shadow: 0 0 10px #0f3460; }
+    .vault h2 { color: #e94560; }
+    #wallet-address { font-size: 0.9em; margin: 1em 0; word-break: break-all; }
+    button { background: #0f3460; border: none; color: #fff; padding: 0.7em 1.5em; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #e94560; }
+  </style>
+</head>
+<body>
+  <div class="vault">
+    <h2>Crypto Vault</h2>
+    <div id="wallet-address">No wallet connected</div>
+    <button onclick="connectWallet()">Connect Wallet</button>
+  </div>
+  <script>
+    async function connectWallet() {
+      if (window.ethereum) {
+        try {
+          const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+          document.getElementById('wallet-address').textContent = "Wallet: " + accounts[0];
+        } catch (error) {
+          document.getElementById('wallet-address').textContent = "Connection failed.";
+        }
+      } else {
+        document.getElementById('wallet-address').textContent = "MetaMask not detected.";
+      }
+    }
+  </script>
+</body>
+</html>
